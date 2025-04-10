@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.4.553">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Edyta Margol">
+
+<title>Przewidywanie ceny upraw</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="projekt-eksploracja_files/libs/clipboard/clipboard.min.js"></script>
+<script src="projekt-eksploracja_files/libs/quarto-html/quarto.js"></script>
+<script src="projekt-eksploracja_files/libs/quarto-html/popper.min.js"></script>
+<script src="projekt-eksploracja_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="projekt-eksploracja_files/libs/quarto-html/anchor.min.js"></script>
+<link href="projekt-eksploracja_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="projekt-eksploracja_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="projekt-eksploracja_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="projekt-eksploracja_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="projekt-eksploracja_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<link href="projekt-eksploracja_files/libs/htmltools-fill-0.5.8.1/fill.css" rel="stylesheet">
+
+<script src="projekt-eksploracja_files/libs/htmlwidgets-1.6.2/htmlwidgets.js"></script>
+
+<link href="projekt-eksploracja_files/libs/datatables-css-0.0.0/datatables-crosstalk.css" rel="stylesheet">
+
+<script src="projekt-eksploracja_files/libs/datatables-binding-0.33/datatables.js"></script>
+
+<script src="projekt-eksploracja_files/libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+
+<link href="projekt-eksploracja_files/libs/dt-core-1.13.6/css/jquery.dataTables.min.css" rel="stylesheet">
+
+<link href="projekt-eksploracja_files/libs/dt-core-1.13.6/css/jquery.dataTables.extra.css" rel="stylesheet">
+
+<script src="projekt-eksploracja_files/libs/dt-core-1.13.6/js/jquery.dataTables.min.js"></script>
+
+<link href="projekt-eksploracja_files/libs/crosstalk-1.2.1/css/crosstalk.min.css" rel="stylesheet">
+
+<script src="projekt-eksploracja_files/libs/crosstalk-1.2.1/js/crosstalk.min.js"></script>
+
+
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+</head>
+
+<body class="fullcontent">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Przewidywanie ceny upraw</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Edyta Margol </p>
+          </div>
+  </div>
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="wstęp" class="level2">
+<h2 class="anchored" data-anchor-id="wstęp">Wstęp</h2>
+<p>Projekt dotyczy przewidywania ceny upraw w zależności od parametrów gleby oraz obszaru Indii, na którym rośnie dana uprawa. Zbiór danych pochodzi ze strony <a href="https://www.kaggle.com/datasets/gokulprasantht/crop-prediction" class="uri">https://www.kaggle.com/datasets/gokulprasantht/crop-prediction</a> i zawiera 11 zmiennych:</p>
+<ol type="1">
+<li><p>STATE - stan Indii, w którym rośnie dana uprawa.</p></li>
+<li><p>SOIL TYPE - rodzaj gleby, na której rósnie dana uprawa.</p></li>
+<li><p>N_SOIL – ilość azotu w glebie</p></li>
+<li><p>P_SOIL – ilość fosforu w glebie.</p></li>
+<li><p>K_SOIL – ilość potasu w glebie.</p></li>
+<li><p>TEMPERATURE – wartość temperatury na danym obszarze.</p></li>
+<li><p>HUMIDITY – wilgotność na danym obszarze.</p></li>
+<li><p>ph – wartość ph gleby.</p></li>
+<li><p>RAINFALL – ilość opadów na danym obszarze.</p></li>
+<li><p>CROP_PRICE – cena plonu w okresie sprzedaży (prawdopodobnie w rupiach indyjskich).</p></li>
+<li><p>CROP – uprawa rosnąca na danym obszarze.</p></li>
+</ol>
+</section>
+<section id="czyszczenie-danych-i-tranformacja-zbioru" class="level2">
+<h2 class="anchored" data-anchor-id="czyszczenie-danych-i-tranformacja-zbioru">Czyszczenie danych i tranformacja zbioru</h2>
+<p>Kroki podjęte w celu wyczyszczenia danych:</p>
+<ul>
+<li><p>zamiana nazw kolumn na małe litery,</p></li>
+<li><p>sprawdzenie braków danych - zbiór nie ma braków danych,</p></li>
+<li><p>sprawdzenie duplikatów danych - zbiór nie ma duplikatów danych,</p></li>
+<li><p>zamiana nazwy niektórych stanow (niektóre nie są już w użyciu, a niektóre są błędnie napisane).</p></li>
+</ul>
+<p>Kroki podjęte w celu transformacji zbioru do postaci nadającej się do dalszej analizy:</p>
+<ul>
+<li><p>zredukowanie liczby poziomów zmiennej state (26 poziomów) poprzez dodanie dwóch nowych zmiennych: region (7 poziomów) oraz climate (5 poziomów) w celu ułatwienia analizy, gdyż w niektorych stanach występuje mało obserwacji,</p>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Liczba obserwacji dla zmiennej state:"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+Andaman and Nicobar      Andhra Pradesh               Assam         Chattisgarh 
+                 15                   7                  58                   5 
+                Goa             Gujarat             Haryana    Himachal Pradesh 
+                  3                 113                  65                 102 
+  Jammu and Kashmir           Karnataka              Kerala      Madhya Pradesh 
+                  3                  36                 274                  44 
+        Maharashtra             Manipur           Meghalaya            Nagaland 
+                162                  52                   6                   6 
+             Odisha          Puducherry              Punjab           Rajasthan 
+                 86                   7                 180                  41 
+         Tamil Nadu           Telangana             Tripura       Uttar Pradesh 
+                183                  15                  18                 574 
+        Uttarakhand         West Bengal 
+                 21                 124 </code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Liczba obserwacji dla zmiennej region:"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+  Central India      East India         Islands     North India Northeast India 
+             49             210              15             945             140 
+    South India     West Indies 
+            522             319 </code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Liczba obserwacji dla zmiennej climate:"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+      Dry and Desert Equatorial/Monsoonal              Islands 
+                 219                  707                   15 
+            Moderate        Mountain/Cool 
+                1051                  208 </code></pre>
+</div>
+</div></li>
+<li><p>zredukowanie poziomów zmiennej crop poprzez naprawienie nazw niektórych upraw oraz przypisanie kategorii “Other” dla upraw, dla których występuje mniej niż 10 obserwacji - jeśli zostawimy uprawy, które będą miały np. po jednej obserwacji, to mogą potem wystąpić problemy z trenowaniem i ewaluacją modelu, gdyż dana kategoria występuje tylko w zbiorze uczącym, bądź tylko w testowym.</p>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Liczba obserwacji zmiennej crop przed dodanie kategorii Other:"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+     Amaranthus            Amla     Amphophalus           Apple        Arecanut 
+              9               1               6              32               9 
+      Ash Gourd           Bajra          Banana          Barley           Beans 
+             11              16              74               8               7 
+       Beetroot     Bengal Gram    Betal Leaves    Bitter Gourd      Black Gram 
+             13              13               1              32              19 
+   Black pepper    Bottle Gourd         Brinjal     Broken Rice         Cabbage 
+              2              39              96               1              69 
+       Capsicum          Carrot      Cashewnuts     Castor Seed     Cauliflower 
+             17              69               2               1              83 
+      Chana Dal         Chholia Chilly Capsicum   Cluster beans   Cluster Beans 
+              4               2               4               3               3 
+        Coconut     Coconut Oil    Coconut Seed       Colacasia           Copra 
+             29               1               7               8              14 
+      Coriander Corriander seed          Cotton          Cowpea        Cucumber 
+             19               1              23              12              44 
+          Cumbu       Drumstick    Dry Chillies    Duster Beans     Elephat Yam 
+              3              14               7               1               8 
+      Field Pea            Fish    French Beans          Garlic            Ghee 
+              5               1               7              18               1 
+   Gingelly Oil          Ginger          Grapes     Green Avare    Green Banana 
+              1              48              20               1              22 
+   Green Chilli      Green Gram     Green Onion      Green Peas Ground Nut Seed 
+             73              11               6               4               1 
+      Groundnut            Guar           Guava      Horse Gram    Hybrid Cumbu 
+             17               6              13               2               3 
+        Jaggery           Jowar            Jute        Karamani          Kinnow 
+             27               3               9               1              16 
+     Knool Khol   Ladies Finger Leafy Vegetable           Lemon          Lentil 
+              4              42               6              19               4 
+           Lime         Linseed    Little Gourd      Long Melon      Maida Atta 
+              2               1               5               1               1 
+          Maize           Mango       Masur Dal    Methi Leaves            Mint 
+             22               5               7               8               3 
+      Moath Dal       Moong Dal       Mushrooms      Musk Melon         Mustard 
+              2               1               2               1              36 
+    Mustard Oil      Niger Seed           Onion          Orange           Paddy 
+              6               1              96              15             100 
+         Papaya          Parval            Pear            Peas        Peas cod 
+             24               1               1              29               9 
+ Pepper garbled      Pigeon Pea       Pineapple            Plum     Pomegranate 
+              2               5               4               1              14 
+         Potato         Pumpkin         Raddish            Ragi          Rajgir 
+            109              37              50               7               2 
+       Red Gram            Rice     Ridge Gourd     Round gourd          Rubber 
+              6              47               9               1               1 
+         Sapota            Seam   Seemebadnekai         Sesamum      Snakeguard 
+              5               4               1              14               9 
+       Soyabean         Spinach    Sponge Gourd          Squash           Sugar 
+              4              22               2               2               3 
+    Surat Beans   Suvarna Gadde      Sweet Lime    Sweet Potato   Sweet Pumpkin 
+              4               1               6               8               7 
+ Tamarind Fruit         Tapioca        Taramira  Tender Coconut          Thinai 
+              3               7               1               1               1 
+          Tinda         Tobacco          Tomato         Tur Dal        Turmeric 
+              3               2             100               6              11 
+         Turnip         Urd Dal          Varagu     Water Melon           Wheat 
+              3               3               1               5              44 
+     Wheat Atta   White Pumpkin            Wood        Zizyphus 
+              3               1               7               4 </code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Liczba obserwacji zmiennej crop po dodaniu kategorii 'Othe'r:"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+        Apple     Ash Gourd         Bajra        Banana      Beetroot 
+           32            11            16            74            13 
+  Bengal Gram  Bitter Gourd    Black Gram  Bottle Gourd       Brinjal 
+           13            32            19            39            96 
+      Cabbage      Capsicum        Carrot   Cauliflower       Coconut 
+           69            17            69            83            29 
+        Copra     Coriander        Cotton        Cowpea      Cucumber 
+           14            19            23            12            44 
+    Drumstick        Garlic        Ginger        Grapes  Green Banana 
+           14            18            48            20            22 
+ Green Chilli    Green Gram     Groundnut         Guava       Jaggery 
+           73            11            17            13            27 
+       Kinnow Ladies Finger         Lemon         Maize       Mustard 
+           16            42            19            22            36 
+        Onion        Orange         Other         Paddy        Papaya 
+           96            15           366           100            24 
+         Peas   Pomegranate        Potato       Pumpkin       Raddish 
+           29            14           109            37            50 
+         Rice       Sesamum       Spinach        Tomato      Turmeric 
+           47            14            22           100            11 
+        Wheat 
+           44 </code></pre>
+</div>
+</div></li>
+</ul>
+</section>
+<section id="wstępna-analiza" class="level2">
+<h2 class="anchored" data-anchor-id="wstępna-analiza">Wstępna analiza</h2>
+<p>W pierwszej kolejności sprawdzimy podstawowe statystyki zbioru.</p>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>    state            soil_type             n_soil           p_soil      
+ Length:2200        Length:2200        Min.   :  0.00   Min.   :  5.00  
+ Class :character   Class :character   1st Qu.: 21.00   1st Qu.: 28.00  
+ Mode  :character   Mode  :character   Median : 37.00   Median : 51.00  
+                                       Mean   : 50.55   Mean   : 53.36  
+                                       3rd Qu.: 84.25   3rd Qu.: 68.00  
+                                       Max.   :140.00   Max.   :145.00  
+     k_soil        temperature        humidity           ph       
+ Min.   :  5.00   Min.   : 8.826   Min.   :14.26   Min.   :3.505  
+ 1st Qu.: 20.00   1st Qu.:22.769   1st Qu.:60.26   1st Qu.:5.972  
+ Median : 32.00   Median :25.599   Median :80.47   Median :6.425  
+ Mean   : 48.15   Mean   :25.616   Mean   :71.48   Mean   :6.469  
+ 3rd Qu.: 49.00   3rd Qu.:28.562   3rd Qu.:89.95   3rd Qu.:6.924  
+ Max.   :205.00   Max.   :43.675   Max.   :99.98   Max.   :9.935  
+    rainfall        crop_price         crop              region         
+ Min.   : 20.21   Min.   :     2   Length:2200        Length:2200       
+ 1st Qu.: 64.55   1st Qu.:   950   Class :character   Class :character  
+ Median : 94.87   Median :  1825   Mode  :character   Mode  :character  
+ Mean   :103.46   Mean   :  2689                                        
+ 3rd Qu.:124.27   3rd Qu.:  3500                                        
+ Max.   :298.56   Max.   :120000                                        
+   climate         
+ Length:2200       
+ Class :character  
+ Mode  :character  
+                   
+                   
+                   </code></pre>
+</div>
+</div>
+<p>Rozrzut wartości zmiennej crop_price jest niepokojący, jednakże wynika on z wpływu różnych czynników. W związku z tym, na obecnym etapie analizy, nie będziemy się nim szczegółowo zajmować.</p>
+<p>Następnie sprawdzimy rozkłady zmiennych numerycznych w celu sprawdzenia czy są symetryczne.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-10-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Większość zmiennych na pierwszy rzut oka charakteryzuje sie asymetria, z czego wynika, że nie mają rozkładu normalnego. Jedynie dla temperatury i ph zostały przeprowadzone testy, które potwierdziły brak normalności rozkładu.</p>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>
+    Shapiro-Wilk normality test
+
+data:  Dataset$temperature
+W = 0.9821, p-value = 5.262e-16</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>
+    Shapiro-Wilk normality test
+
+data:  Dataset$ph
+W = 0.9791, p-value &lt; 2.2e-16</code></pre>
+</div>
+</div>
+<p>Następnie rysujemy boxploty w celu identyfikacji potencjalnych odstępstw lub wartości skrajnych w zbiorze danych.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-13-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-14-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Widzimy stąd, że praktycznie każda zmienna ma wartości odstające.</p>
+<p>Dla większości upraw również występuje dużo wartości odstających:</p>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-15-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-16-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-16-2.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-16-3.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-16-4.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-16-5.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-16-6.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-16-7.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-16-8.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-16-9.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>W kolejnym kroku sprawdzamy korelacje zmiennych numerycznych.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="projekt-eksploracja_files/figure-html/unnamed-chunk-17-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Zmienne nie są ze sobą mocno skorelowane, a zatem wszystkie mogą być wzięte do modeli.</p>
+<p>Ponadto zauważmy, że zmienne state, region i climate raczej nie powinny wchodzić razem do modelu. Informacje o region i climate są już zawarte w state, gdyż zostały na jej podstawie stworzone, a dodanie ich wszystkich do modelu może prowadzić do nadmiernego dopasowania.</p>
+<p>Dla potwierdzenia obliczymy współczynniki V Cramera dla tych trzech zmiennych.</p>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Cramér's V pomiedzy state i region: 1"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Cramér's V pomiedzy state i climate: 1"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Cramér's V pomiedzy region i climate: 0.754703012016238"</code></pre>
+</div>
+</div>
+<p>Współczynniki V Cramera są wysokie dla wszystkich kombinacji zmiennych, zatem będziemy rozważać modele:</p>
+<ul>
+<li><p>tylko ze zmienną state,</p></li>
+<li><p>tylko ze zmienną region,</p></li>
+<li><p>tylko ze zmienną climate.</p></li>
+</ul>
+</section>
+<section id="przetwarzanie-danych-do-modelowania" class="level2">
+<h2 class="anchored" data-anchor-id="przetwarzanie-danych-do-modelowania">Przetwarzanie danych do modelowania</h2>
+<p>Modele, które zostaną stworzone to:</p>
+<ul>
+<li><p>model liniowy,</p></li>
+<li><p>drzewo regresyjne,</p></li>
+<li><p>las losowy,</p></li>
+<li><p>Gradient Boosting Machine (GBM),</p></li>
+<li><p>Support Vector Machines (SVM),</p></li>
+<li><p>K Nearest Neighbours (KNN).</p></li>
+</ul>
+<p>Do każdego z tych modeli zastosujemy inne przetworzenie danych:</p>
+<ul>
+<li><p>brak przetworzenia,</p></li>
+<li><p>kodowanie zmiennych kategorycznych,</p></li>
+<li><p>kodowanie zmiennych kategorycznych oraz normalizację zmiennych numerycznych.</p></li>
+</ul>
+<table class="table">
+<thead>
+<tr class="header">
+<th>model</th>
+<th>one hot encoding</th>
+<th>normalizacja</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>model liniowy</td>
+<td>nie</td>
+<td>nie</td>
+</tr>
+<tr class="even">
+<td>drzewo regresyjne</td>
+<td>nie</td>
+<td>nie</td>
+</tr>
+<tr class="odd">
+<td>las losowy</td>
+<td>nie</td>
+<td>nie</td>
+</tr>
+<tr class="even">
+<td>GBM</td>
+<td>tak</td>
+<td>nie</td>
+</tr>
+<tr class="odd">
+<td>SVM</td>
+<td>tak</td>
+<td>tak</td>
+</tr>
+<tr class="even">
+<td>KNN</td>
+<td>tak</td>
+<td>tak</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="modelowanie" class="level2">
+<h2 class="anchored" data-anchor-id="modelowanie">Modelowanie</h2>
+<p>Jako, że nie wiemy która ze zmiennych pomiędzy state, region i climate będzie najlepiej pasowała do modelu, będziemy budować oddzielne warianty modeli i porównywać je ze sobą. Ewentualne tuningi dodamy dla modeli z najlepszymi wynikami ewaluacji. Samą zaś ewaluację będziemy przeprowadzać w oparciu o 3 metryki:</p>
+<ul>
+<li><p>MAE - mierzy średnią wartość bezwzględnej różnicy między rzeczywistymi a przewidywanymi wartościami.; im niższa wartość MAE, tym lepszy model, ponieważ oznacza mniejsze odchylenie przewidywań od rzeczywistych wartości,</p></li>
+<li><p>MSE - mierzy średnią wartość kwadratu różnicy między rzeczywistymi a przewidywanymi wartościami.; im niższa wartość MSE, tym lepszy model, ponieważ oznacza mniejszą wariancję przewidywań od rzeczywistych wartości,</p></li>
+<li><p><span class="math inline">\(R^2\)</span>- mierzy stopień dopasowania modelu do danych; dostarcza informacji jak dużo zmienności w danych jest wyjaśniane przez model; im wyższa wartość <span class="math inline">\(R^2\)</span> , tym lepsze dopasowanie modelu do danych.</p></li>
+</ul>
+<p>Ponadto będziemy oddzielnie przeprowadzać ewaluację modelu na zbiorze uczącym i testowym w celu sprawdzenia stabilności modelu.</p>
+<section id="model-liniowy" class="level3">
+<h3 class="anchored" data-anchor-id="model-liniowy">Model liniowy</h3>
+<p>Model liniowy, inaczej regresja liniowa, jest jednym z najprostszych i najbardziej podstawowych modeli w analizie regresji. Zakłada, że istnieje liniowa kombinacja zmiennych niezależnych, która najlepiej opisuje zmienną zależną (u nas crop_price), tzn:</p>
+<p><span class="math display">\[Y=\beta_1X_1+\beta_2X_2+...+\beta_nX_n+\varepsilon,\]</span></p>
+<p>gdzie:</p>
+<p><span class="math inline">\(Y\)</span> - zmienna zależna,</p>
+<p><span class="math inline">\(\beta_1, \beta_2,..., \beta_n\)</span> - współczynniki regresji,</p>
+<p><span class="math inline">\(X_1, X_2,..., X_n\)</span> - zmienne niezależne,</p>
+<p><span class="math inline">\(\varepsilon\)</span> - błąd losowy.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-c45e713975bac46d64bb" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-c45e713975bac46d64bb">{"x":{"filter":"none","vertical":false,"caption":"<caption>Metryki na zbiorze treningowym<\/caption>","data":[["MAE_metric","MSE_metric","R_square_metric"],[1062.36717351954,9519050.76844226,0.352324092426895],[1148.18291691413,9825831.30030371,0.331450754923765],[1103.33526260156,10024248.8602532,0.317950430537981]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>Model_state<\/th>\n      <th>Model_region<\/th>\n      <th>Model_climate<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2,3]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"Model_state","targets":1},{"name":"Model_region","targets":2},{"name":"Model_climate","targets":3}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-171697b1ffe7cd0c9143" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-171697b1ffe7cd0c9143">{"x":{"filter":"none","vertical":false,"caption":"<caption>Metryki na zbiorze testowym<\/caption>","data":[["MAE_metric","MSE_metric","R_square_metric"],[1167.39687298888,6557236.34692945,0.343335045026872],[1253.80712703369,6630110.52373872,0.336037165935543],[1203.53948788479,6673290.88398032,0.331712931179683]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>Model_state<\/th>\n      <th>Model_region<\/th>\n      <th>Model_climate<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2,3]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"Model_state","targets":1},{"name":"Model_region","targets":2},{"name":"Model_climate","targets":3}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<p>Na podstawie wyników metryk na zbiorze treningowym i testowym można stwierdzić, że model ze zmienną state osiągnął najniższe wartości błędów oraz najwyższe dopasowanie w porównaniu do pozostałych modeli. Ponadto osiaga on podobne dopasowanie zarówno na zbiorze uczącym i testowym, co oznacza, że nie jest on ani niedouczony, ani przeuczony. Jednak różnice w wydajności między modelami nie są mocno znaczące, a dopasowanie samych modeli jest dość niskie, co oznacza, że modele mają ograniczoną zdolność do precyzyjnego przewidywania.</p>
+</section>
+<section id="model-drzewa" class="level3">
+<h3 class="anchored" data-anchor-id="model-drzewa">Model drzewa</h3>
+<p>Algorytm drzewa decyzyjnego jest metodą uczenia maszynowego używaną zarówno do klasyfikacji, jak i regresji. Jego działanie polega na rekurencyjnym podziale danych na mniejsze, bardziej jednorodne podzbiory, tworząc strukturę przypominającą drzewo. Proces budowy drzewa rozpoczyna się od całego zbioru danych i polega na wyborze najlepszych cech oraz wartości progowych do podziału, co maksymalizuje jednorodność podzbiorów. Węzły wewnętrzne drzewa reprezentują decyzje na podstawie wybranych cech, natomiast liście reprezentują końcowe przewidywania modelu. Algorytm dzieli dane aż do osiągnięcia określonej głębokości drzewa, minimalnej liczby próbek w liściu, lub gdy dalsze podziały nie przynoszą znaczącej poprawy jednorodności.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-f9797b76285cd861ad7a" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-f9797b76285cd861ad7a">{"x":{"filter":"none","vertical":false,"caption":"<caption>Metryki na zbiorze treningowym<\/caption>","data":[["MAE_metric","MSE_metric","R_square_metric"],[1216.23421435606,9433398.72871732,0.35815185445],[1218.37587328405,10015446.7756426,0.318549324091273],[1218.37587328405,10015446.7756426,0.318549324091273]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>Model_state<\/th>\n      <th>Model_region<\/th>\n      <th>Model_climate<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2,3]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"Model_state","targets":1},{"name":"Model_region","targets":2},{"name":"Model_climate","targets":3}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-520353bf5760593e6621" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-520353bf5760593e6621">{"x":{"filter":"none","vertical":false,"caption":"<caption>Metryki na zbiorze testowym<\/caption>","data":[["MAE_metric","MSE_metric","R_square_metric"],[1167.39687298888,6557236.34692945,0.343335045026872],[1335.14534807964,7120564.56497043,0.28692135496548],[1335.14534807964,7120564.56497043,0.28692135496548]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>Model_state<\/th>\n      <th>Model_region<\/th>\n      <th>Model_climate<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2,3]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"Model_state","targets":1},{"name":"Model_region","targets":2},{"name":"Model_climate","targets":3}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<p>W modelach drzewa, podobnie jak w modelach liniowych, na podstawie wyników metryk można stwierdzić, że model oparty na zmiennej state osiągnął najniższe wartości błędów oraz najwyższe dopasowanie w porównaniu do pozostałych modeli. Ponadto, model ten wykazuje podobne dopasowanie zarówno na zbiorze uczącym, jak i testowym, co sugeruje, że nie jest on ani niedouczony, ani przeuczony. Niemniej jednak, różnice w wydajności między modelami nie są znaczące, a sam poziom dopasowania jest dość niski, co sugeruje, że modele mają ograniczoną zdolność do precyzyjnego przewidywania wartości zmiennych zależnych. Stuningowanie najlepszego z nich (ze zmienną state) poprzez dodanie siatki parametrów i 10-krotną walidację krzyżową, dało jeszcze słabsze wyniki:</p>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Metryki na zbiorze treningowym:"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>$MSE
+[1] 9063536
+
+$MAE
+[1] 1043.18
+
+$R_squared
+[1] 0.3833173</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Metryki na zbiorze testowym:"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>$MSE
+[1] 6824744
+
+$MAE
+[1] 1229.949
+
+$R_squared
+[1] 0.3165458</code></pre>
+</div>
+</div>
+</section>
+<section id="las-losowy" class="level3">
+<h3 class="anchored" data-anchor-id="las-losowy">Las losowy</h3>
+<p>Algorytm lasu losowego jest metodą uczenia maszynowego, która polega na tworzeniu wielu drzew działających jako zespoły. Każdo z tych drzew jest trenowane na losowo wybranym podzbiorze danych oraz losowym podzbiorze cech, co wprowadza różnorodność w drzewach. Przewidywania poszczególnych drzew są następnie łączone – w przypadku klasyfikacji poprzez wybranie najczęsciej powtarzającej się wartości, a w przypadku regresji poprzez uśrednianie wyników. Las losowy jest bardziej odporny na szum w danych i zazwyczaj oferuje lepszą wydajność w porównaniu do pojedynczego drzewa decyzyjnego.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-0eb65b016a637e9b951e" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-0eb65b016a637e9b951e">{"x":{"filter":"none","vertical":false,"caption":"<caption>Metryki na zbiorze treningowym<\/caption>","data":[["MAE_metric","MSE_metric","R_square_metric"],[601.191481606064,3306542.27437059,0.775022970191358],[589.907729653577,2870596.92608115,0.804684677642451],[603.947779113194,3315513.38035784,0.774412576429042]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>Model_state<\/th>\n      <th>Model_region<\/th>\n      <th>Model_climate<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2,3]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"Model_state","targets":1},{"name":"Model_region","targets":2},{"name":"Model_climate","targets":3}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-343a92a7e8871b17660a" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-343a92a7e8871b17660a">{"x":{"filter":"none","vertical":false,"caption":"<caption>Metryki na zbiorze testowym<\/caption>","data":[["MAE_metric","MSE_metric","R_square_metric"],[1393.66211856633,7381502.81248881,0.260790071374084],[1290.7523436984,7113504.70220296,0.287628354716753],[1315.2015556215,7148090.91765803,0.284164768167043]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>Model_state<\/th>\n      <th>Model_region<\/th>\n      <th>Model_climate<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2,3]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"Model_state","targets":1},{"name":"Model_region","targets":2},{"name":"Model_climate","targets":3}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<p>Na podstawie wyników metryk na zbiorze treningowym i testowym można zauważyć, że modele różnią się pod względem swojej wydajności. Najlepiej wypadł model oparty o zmienną region osiągając najniższe wartości błędów MAE i MSE oraz najwyzszy współczynnik <span class="math inline">\(R^2\)</span> zarówno na zbiorze treningowym, jak i testowym. Jednak zarówno ten model jak i pozostałe cechują się wysokim przeuczeniem.</p>
+<p>Sprawdźmy jak sprawdzi się po dodaniu siatki parametrów i 10-krotnej walidacji krzyżowej:</p>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Metryki na zbiorze treningowym:"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>$MSE
+[1] 4697891
+
+$MAE
+[1] 764.8897
+
+$R_squared
+[1] 0.6803556</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Metryki na zbiorze testowym:"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>$MSE
+[1] 6630338
+
+$MAE
+[1] 1249.668
+
+$R_squared
+[1] 0.3360144</code></pre>
+</div>
+</div>
+<p>Niestety stuningowanie modeli, nie poprawiło go znacząco.</p>
+</section>
+<section id="gradient-boosting-machines" class="level3">
+<h3 class="anchored" data-anchor-id="gradient-boosting-machines">Gradient Boosting Machines</h3>
+<p>Gradient Boosting Machines (GBM) to technika uczenia maszynowego, która polega na budowaniu silnych modeli przewidywania poprzez sekwencyjne dodawanie słabych modeli predykcyjnych (zazwyczaj drzew decyzyjnych), tak aby korygować błędy poprzednich modeli. Proces ten polega na minimalizowaniu funkcji straty poprzez iteracyjne dopasowywanie modelu do reszt, które pozostały po poprzednich iteracjach. GBM wykorzystuje technikę gradientowego spadku (gradient descent) do optymalizacji parametrów modelu, minimalizując błąd prognozowania w kolejnych iteracjach. Dzięki temu GBM może osiągać bardzo dobre wyniki predykcyjne nawet dla skomplikowanych zbiorów danych.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-e4d94f05a67d2aa1598e" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-e4d94f05a67d2aa1598e">{"x":{"filter":"none","vertical":false,"caption":"<caption>Metryki na zbiorze treningowym<\/caption>","data":[["MAE_metric","MSE_metric","R_square_metric"],[1314.75326436407,9627721.88237005,0.344930113336721],[1304.88497405929,9186457.87200614,0.374953702383989],[1317.05389120109,9173325.35712274,0.375847238273515]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>Model_state<\/th>\n      <th>Model_region<\/th>\n      <th>Model_climate<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2,3]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"Model_state","targets":1},{"name":"Model_region","targets":2},{"name":"Model_climate","targets":3}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-d95ad74784001d7d17fd" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-d95ad74784001d7d17fd">{"x":{"filter":"none","vertical":false,"caption":"<caption>Metryki na zbiorze testowym<\/caption>","data":[["MAE_metric","MSE_metric","R_square_metric"],[1472.82482388228,7392248.19166354,0.259713990909904],[1483.30143119834,7431680.87859692,0.255765061479946],[1498.36742306813,7623739.73874455,0.236531604566334]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>Model_state<\/th>\n      <th>Model_region<\/th>\n      <th>Model_climate<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2,3]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"Model_state","targets":1},{"name":"Model_region","targets":2},{"name":"Model_climate","targets":3}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<p>Modele wydają się być podobnie pod względem dopasowania do danych treningowych, ale mają trudności w generalizacji na nowe dane. Model oparty o zmienną climate wydaje się być nieco mniej skuteczny niż modele oparte na zmiennych state i region.</p>
+<p>Spróbujemy stuningować model ze zmienną state, poprzez dodanie siatki hiperparametrów z parametrami oraz 5-krotnej walidacji krzyżowej.</p>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Metryki na zbiorze treningowym:"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>$MSE
+[1] 10152008
+
+$MAE
+[1] 1346.132
+
+$R_squared
+[1] 0.3092577</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Metryki na zbiorze testowym:"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>$MSE
+[1] 7138259
+
+$MAE
+[1] 1457.492
+
+$R_squared
+[1] 0.2851493</code></pre>
+</div>
+</div>
+<p>Stuningowanie modelu zniwelowało przeuczenie oraz poprawiło dopasowanie na zbiorze testowym, ale jednak wciąz nie jest ono zbyt wysokie.</p>
+</section>
+<section id="support-vector-machines-svm" class="level3">
+<h3 class="anchored" data-anchor-id="support-vector-machines-svm">Support Vector Machines (SVM)</h3>
+<p>Podstawowym celem SVM jest znalezienie hiperpłaszczyzny optymalnie separującej dane o różnych klasach (w przypadku klasyfikacji) lub maksymalizującej margines między danymi a hiperpłaszczyzną (w przypadku regresji). SVM wykorzystuje wektory nośne, czyli próbki danych znajdujące się najbliżej hiperpłaszczyzny decyzyjnej.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-8b6345a1b433d7edefc4" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-8b6345a1b433d7edefc4">{"x":{"filter":"none","vertical":false,"caption":"<caption>Metryki na zbiorze treningowym<\/caption>","data":[["MAE_metric","MSE_metric","R_square_metric"],[0.184161019348765,0.663962378936754,0.335660583937217],[0.190101121735866,0.690347154617963,0.309260825419164],[0.192247857088496,0.698572859812023,0.301030449182973]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>Model_state<\/th>\n      <th>Model_region<\/th>\n      <th>Model_climate<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2,3]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"Model_state","targets":1},{"name":"Model_region","targets":2},{"name":"Model_climate","targets":3}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-022d251f14ed27c3c9bb" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-022d251f14ed27c3c9bb">{"x":{"filter":"none","vertical":false,"caption":"<caption>Metryki na zbiorze testowym<\/caption>","data":[["MAE_metric","MSE_metric","R_square_metric"],[0.258982902272511,0.430494863288065,0.366023113804213],[0.258767351281506,0.428578190150998,0.368845740903669],[0.261952197988715,0.430531017841169,0.365969870077161]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>Model_state<\/th>\n      <th>Model_region<\/th>\n      <th>Model_climate<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2,3]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"Model_state","targets":1},{"name":"Model_region","targets":2},{"name":"Model_climate","targets":3}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<p>Analiza wyników metryk wykazuje, że modele oparte na zmiennych state i region osiągają niższe wartości błędów oraz wyższy współczynnik determinacji zarówno na zbiorze treningowym, jak i testowym w porównaniu do modelu ze zmienną climate. Mimo to, ogólny poziom dopasowania wszystkich modeli jest dość niski, co sugeruje, że modele mają ograniczoną zdolność do precyzyjnego przewidywania wartości zmiennych zależnych. Spróbujemy stuningować model ze zmienną state, gdyż osiąga on bardziej zbliżone wyniki na zbiorach uczącym i testowym.</p>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Metryki na zbiorze treningowym:"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>$MSE
+[1] 0.6479486
+
+$MAE
+[1] 0.175536
+
+$R_squared
+[1] 0.3516834</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Metryki na zbiorze testowym:"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>$MSE
+[1] 0.3981094
+
+$MAE
+[1] 0.2445859
+
+$R_squared
+[1] 0.4137162</code></pre>
+</div>
+</div>
+<p>Tuning parametrów modelu, trochę go poprawił, jednak dopasowanie na zbiorze uczącym i testowym, trochę się rózni.</p>
+</section>
+<section id="k-nearest-neighbours" class="level3">
+<h3 class="anchored" data-anchor-id="k-nearest-neighbours">K Nearest Neighbours</h3>
+<p>Algorytm k-najbliższych sąsiadów jest algorytmem uczenia maszynowego, który dokonuje predykcji na podstawie podobieństwa między nowym punktem danych a danymi treningowymi. W klasyfikacji przyporządkowuje nowy punkt do klasy najczęściej reprezentowanej przez k najbliższych punktów treningowych, a w regresji oblicza wartość predykcyjną na podstawie średniej (lub mediany) wartości k najbliższych punktów. Kluczowym parametrem jest k, czyli liczba sąsiadów. Zbudujemy modele z automatycznym doborem k poprzez walidację krzyżową.</p>
+<div class="cell">
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Optymalne k dla modelu ze zmnienną state to:  9"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Optymalne k dla modelu ze zmnienną region to:  7"</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Optymalne k dla modelu ze zmnienną climate to:  11"</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-ca89bb7e62f6db02e9fd" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-ca89bb7e62f6db02e9fd">{"x":{"filter":"none","vertical":false,"caption":"<caption>Metryki na zbiorze treningowym<\/caption>","data":[["MAE_metric","MSE_metric","R_square_metric"],[0.331922023314661,0.689488599907542,0.310119867667752],[0.316110584292601,0.659400437424131,0.340225115990165],[0.34630661744524,0.727632113646007,0.271954693785199]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>Model_state<\/th>\n      <th>Model_region<\/th>\n      <th>Model_climate<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2,3]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"Model_state","targets":1},{"name":"Model_region","targets":2},{"name":"Model_climate","targets":3}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-73344f67be787f4706bc" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-73344f67be787f4706bc">{"x":{"filter":"none","vertical":false,"caption":"<caption>Metryki na zbiorze testowym<\/caption>","data":[["MAE_metric","MSE_metric","R_square_metric"],[0.380525527474934,0.487859643740902,0.281543720459028],[0.373205042903629,0.485865586044709,0.284480309480025],[0.379440644248794,0.478900617938219,0.294737409318289]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>Model_state<\/th>\n      <th>Model_region<\/th>\n      <th>Model_climate<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"columnDefs":[{"className":"dt-right","targets":[1,2,3]},{"orderable":false,"targets":0},{"name":" ","targets":0},{"name":"Model_state","targets":1},{"name":"Model_region","targets":2},{"name":"Model_climate","targets":3}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<p>Średni błąd bezwzględny dla modeli waha się między 0.31 a 0.34 na zbiorze treningowym i wynosi około 0.38 na zbiorze testowym. Średni błąd kwadratowy wynosi około 0.48 na zbiorze testowym. Współczynnik determinacji dla zbioru testowego wynosi około 0.28. Wartości te sugerują, że modele mają podobną zdolność predykcyjną, ale ich ogólna zdolność do wyjaśniania zmienności danych jest ograniczona. Ze wszystkich modeli najlepiej wypada model ze zmienną climate - najwyższe dopasowanie na zbiorze testowym oraz najmniejsza różnica dopasowania pomiędzy zbiorami uczącym i testowym.</p>
+</section>
+</section>
+<section id="podsumowanie" class="level2">
+<h2 class="anchored" data-anchor-id="podsumowanie">Podsumowanie</h2>
+<p>Wyniki na zbiorze testowym dla najlepszych modeli:</p>
+<table class="table">
+<colgroup>
+<col style="width: 14%">
+<col style="width: 14%">
+<col style="width: 14%">
+<col style="width: 14%">
+<col style="width: 14%">
+<col style="width: 14%">
+<col style="width: 14%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Regresja liniowa</th>
+<th>Drzewo</th>
+<th>Las losowy</th>
+<th>GBM</th>
+<th>SVM</th>
+<th>KNN</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>MSE</td>
+<td>1167.39</td>
+<td>1167.39</td>
+<td>6630338</td>
+<td>7138259</td>
+<td>0.3981094</td>
+<td>0.3794</td>
+</tr>
+<tr class="even">
+<td>MAE</td>
+<td>6557236.34</td>
+<td>6557236.34</td>
+<td>1249.668</td>
+<td>1457.49</td>
+<td>0.2445859</td>
+<td>0.4789</td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(R^2\)</span></td>
+<td>0.34333</td>
+<td>0.34333</td>
+<td>0.33601</td>
+<td>0.2851493</td>
+<td>0.4137162</td>
+<td>0.29473</td>
+</tr>
+</tbody>
+</table>
+<p>Wszystkie modele prezentują podobną skuteczność w przewidywaniu danych, lecz wszystkie mają ograniczone możliwości. Najlepsze wyniki wydaje się uzyskiwać model SVM, charakteryzując się wyższym współczynnikiem <span class="math inline">\(R^2\)</span> w porównaniu do innych modeli. Warto jednak zauważyć, że dopasowanie modelu na zbiorze uczącym i testowym różniło się (wartość <span class="math inline">\(R^2\)</span> ok. 0.35 dla zbioru treningowego).</p>
+<p>Można przypuszczać, że skuteczność modeli mogłaby być lepsza, gdyby zbiór danych był bardziej kompletny i zawierał więcej informacji. Brakuje szczegółowych informacji o zmiennych, takich jak jednostki miary dla zmiennych numerycznych czy szczegóły dotyczące czasu sprzedaży. Takie informacje mogłyby znacząco wpłynąć na precyzję przewidywań i ogólną efektywność modeli.</p>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+    var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+    var mailtoRegex = new RegExp(/^mailto:/);
+      var filterRegex = new RegExp('/' + window.location.host + '/');
+    var isInternal = (href) => {
+        return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+    }
+    // Inspect non-navigation links and adorn them if external
+ 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool)');
+    for (var i=0; i<links.length; i++) {
+      const link = links[i];
+      if (!isInternal(link.href)) {
+        // undo the damage that might have been done by quarto-nav.js in the case of
+        // links that we want to consider external
+        if (link.dataset.originalHref !== undefined) {
+          link.href = link.dataset.originalHref;
+        }
+      }
+    }
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+    const config = {
+      allowHTML: true,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start',
+    };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      if (note) {
+        return note.innerHTML;
+      } else {
+        return "";
+      }
+    });
+  }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      // TODO in 1.5, we should make sure this works without a callout special case
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

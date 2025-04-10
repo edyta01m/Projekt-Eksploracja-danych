@@ -1,0 +1,1003 @@
+---
+title: "Przewidywanie ceny upraw"
+author: "Edyta Margol"
+format: html
+html:
+  toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE)
+```
+
+## Wstęp
+
+Projekt dotyczy przewidywania ceny upraw w zależności od parametrów gleby oraz obszaru Indii, na którym rośnie dana uprawa. Zbiór danych pochodzi ze strony <https://www.kaggle.com/datasets/gokulprasantht/crop-prediction> i zawiera 11 zmiennych:
+
+1.  STATE - stan Indii, w którym rośnie dana uprawa.
+
+2.  SOIL TYPE - rodzaj gleby, na której rósnie dana uprawa.
+
+3.  N_SOIL – ilość azotu w glebie
+
+4.  P_SOIL – ilość fosforu w glebie.
+
+5.  K_SOIL – ilość potasu w glebie.
+
+6.  TEMPERATURE – wartość temperatury na danym obszarze.
+
+7.  HUMIDITY – wilgotność na danym obszarze.
+
+8.  ph – wartość ph gleby.
+
+9.  RAINFALL – ilość opadów na danym obszarze.
+
+10. CROP_PRICE – cena plonu w okresie sprzedaży (prawdopodobnie w rupiach indyjskich).
+
+11. CROP – uprawa rosnąca na danym obszarze.
+
+## Czyszczenie danych i tranformacja zbioru
+
+```{r, include=F}
+#import danych
+library(rio)
+Dataset <- import(file = "crop_data.csv")
+
+# Zmiana nazw kolumn na małe litery
+colnames(Dataset) <- tolower(colnames(Dataset))
+
+#sprawdzanie brakow danych
+sum(is.na(Dataset))
+
+#sprawdzenie duplikatow danych
+sum(duplicated(Dataset))
+
+Dataset$state <- ifelse(Dataset$state == "Uttrakhand", "Uttarakhand", Dataset$state)
+Dataset$state <- ifelse(Dataset$state == "Pondicherry", "Puducherry", Dataset$state)
+```
+
+Kroki podjęte w celu wyczyszczenia danych:
+
+-   zamiana nazw kolumn na małe litery,
+
+-   sprawdzenie braków danych - zbiór nie ma braków danych,
+
+-   sprawdzenie duplikatów danych - zbiór nie ma duplikatów danych,
+
+-   zamiana nazwy niektórych stanow (niektóre nie są już w użyciu, a niektóre są błędnie napisane).
+
+Kroki podjęte w celu transformacji zbioru do postaci nadającej się do dalszej analizy:
+
+-   zredukowanie liczby poziomów zmiennej state (26 poziomów) poprzez dodanie dwóch nowych zmiennych: region (7 poziomów) oraz climate (5 poziomów) w celu ułatwienia analizy, gdyż w niektorych stanach występuje mało obserwacji,
+
+    ```{r}
+    print("Liczba obserwacji dla zmiennej state:")
+    table(Dataset$state)
+    ```
+
+    ```{r}
+    # Tworzenie kolumny region na podstawie stanu
+    Dataset$region <- ifelse(Dataset$state %in% c("Jammu and Kashmir", "Himachal Pradesh", "Haryana", "Punjab", "Uttar Pradesh", "Uttarakhand"), "North India",
+                      ifelse(Dataset$state %in% c("Assam", "Manipur", "Meghalaya", "Nagaland", "Tripura"), "Northeast India",
+                      ifelse(Dataset$state %in% c("West Bengal", "Odisha"), "East India",
+                      ifelse(Dataset$state %in% c("Madhya Pradesh", "Chattisgarh"), "Central India",
+                      ifelse(Dataset$state %in% c("Goa", "Gujarat", "Maharashtra", "Rajasthan"), "West Indies",
+                      ifelse(Dataset$state %in% c("Andhra Pradesh", "Karnataka", "Kerala", "Tamil Nadu", "Telangana", "Puducherry"), "South India",
+                      ifelse(Dataset$state == "Andaman and Nicobar", "Islands", NA)))))))
+
+    # Tworzenie kolumny "klimat" na podstawie stanu
+    Dataset$climate <- ifelse(Dataset$state %in% c("Andhra Pradesh", "Assam", "Karnataka", "Kerala", "Tamil Nadu", "Telangana", "West Bengal", "Puducherry","Goa"), "Equatorial/Monsoonal",
+                       ifelse(Dataset$state %in% c("Gujarat", "Rajasthan", "Haryana"), "Dry and Desert",
+                       ifelse(Dataset$state %in% c("Madhya Pradesh", "Maharashtra", "Odisha", "Uttar Pradesh", "Chattisgarh", "Punjab"), "Moderate",
+                       ifelse(Dataset$state %in% c("Himachal Pradesh", "Jammu and Kashmir", "Uttarakhand", "Manipur", "Meghalaya", "Nagaland", "Tripura"), "Mountain/Cool",
+                       ifelse(Dataset$state == "Andaman and Nicobar", "Islands", NA)))))
+    ```
+
+    ```{r}
+    print("Liczba obserwacji dla zmiennej region:")
+    table(Dataset$region)
+    ```
+
+    ```{r}
+    print("Liczba obserwacji dla zmiennej climate:")
+    table(Dataset$climate)
+    ```
+
+-   zredukowanie poziomów zmiennej crop poprzez naprawienie nazw niektórych upraw oraz przypisanie kategorii "Other" dla upraw, dla których występuje mniej niż 10 obserwacji - jeśli zostawimy uprawy, które będą miały np. po jednej obserwacji, to mogą potem wystąpić problemy z trenowaniem i ewaluacją modelu, gdyż dana kategoria występuje tylko w zbiorze uczącym, bądź tylko w testowym.
+
+    ```{r}
+    print("Liczba obserwacji zmiennej crop przed dodanie kategorii Other:")
+    table(Dataset$crop)
+    ```
+
+    ```{r}
+    Dataset$crop <- ifelse(Dataset$crop == "Cluster beans", "Cluster Beans", Dataset$crop)
+
+    crop_counts <- table(Dataset$crop)
+    rare_crops <- names(crop_counts[crop_counts < 10]) #definiowanie rzadkich kategorii jako tych, które występują mniej niż 10 razy
+
+    #grupowanie rzadkich kategorii w jedną kategorię "Other"
+    library(dplyr)
+    Dataset <- Dataset %>%
+      mutate(crop = if_else(crop %in% rare_crops, "Other", crop))
+    ```
+
+    ```{r}
+    print("Liczba obserwacji zmiennej crop po dodaniu kategorii 'Othe'r:")
+    table(Dataset$crop)
+    ```
+
+## Wstępna analiza
+
+W pierwszej kolejności sprawdzimy podstawowe statystyki zbioru.
+
+```{r}
+summary(Dataset)
+```
+
+Rozrzut wartości zmiennej crop_price jest niepokojący, jednakże wynika on z wpływu różnych czynników. W związku z tym, na obecnym etapie analizy, nie będziemy się nim szczegółowo zajmować.
+
+Następnie sprawdzimy rozkłady zmiennych numerycznych w celu sprawdzenia czy są symetryczne.
+
+```{r}
+library(tidyr)
+
+Dataset_long <- pivot_longer(Dataset, 
+                             cols = c(n_soil, p_soil, k_soil, temperature, humidity, ph, rainfall, crop_price),
+                             names_to = "variable",
+                             values_to = "value")
+
+library(ggplot2)
+
+ggplot(Dataset_long, aes(x = value)) + 
+  geom_density(fill = "lightblue", alpha = 0.5) +
+  facet_wrap(~ variable, scales = "free", labeller = labeller(variable = function(x) paste("Gęstość ", x))) +
+  ggtitle("Gęstość różnych zmiennych") +
+  theme(strip.text = element_text(size = 10, face = "bold"),  # Zmiana rozmiaru i stylu tytułów paneli
+        plot.title = element_text(hjust = 0.5))  # Wyśrodkowanie tytułu głównego
+
+```
+
+Większość zmiennych na pierwszy rzut oka charakteryzuje sie asymetria, z czego wynika, że nie mają rozkładu normalnego. Jedynie dla temperatury i ph zostały przeprowadzone testy, które potwierdziły brak normalności rozkładu.
+
+```{r}
+shapiro.test(Dataset$temperature)
+```
+
+```{r}
+shapiro.test(Dataset$ph)
+```
+
+Następnie rysujemy boxploty w celu identyfikacji potencjalnych odstępstw lub wartości skrajnych w zbiorze danych.
+
+```{r}
+Dataset_long <- pivot_longer(Dataset, 
+                             cols = c(n_soil, p_soil, k_soil, temperature),
+                             names_to = "variable",
+                             values_to = "value")
+ggplot(Dataset_long, aes(x = variable, y = value)) + 
+  geom_boxplot() +
+  facet_wrap(~ variable, scales = "free", ncol = 2, labeller = labeller(variable = function(x) paste("Boxplot dla zmiennej", x))) +
+  ggtitle("Rozrzut wartości różnych zmiennych") +
+  theme(strip.text = element_text(size = 10, face = "bold"),  # Zmiana rozmiaru i stylu tytułów paneli
+        plot.title = element_text(hjust = 0.5))  # Wyśrodkowanie tytułu głównego
+
+```
+
+```{r}
+Dataset_long <- pivot_longer(Dataset, 
+                             cols = c(humidity, ph, rainfall, crop_price),
+                             names_to = "variable",
+                             values_to = "value")
+ggplot(Dataset_long, aes(x = variable, y = value)) + 
+  geom_boxplot() +
+  facet_wrap(~ variable, scales = "free", ncol = 2, labeller = labeller(variable = function(x) paste("Boxplot dla zmiennej", x))) +
+  theme(strip.text = element_text(size = 10, face = "bold"),  # Zmiana rozmiaru i stylu tytułów paneli
+        plot.title = element_text(hjust = 0.5))  # Wyśrodkowanie tytułu głównego
+```
+
+Widzimy stąd, że praktycznie każda zmienna ma wartości odstające.
+
+Dla większości upraw również występuje dużo wartości odstających:
+
+```{r}
+ggplot(Dataset, aes(y = crop_price, fill = crop)) +
+  geom_boxplot()+
+  ggtitle("Cena w zależnosci od uprawy") +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank())
+```
+
+```{r}
+library(dplyr)
+
+# Dodaj kolumnę z grupami
+Dataset <- Dataset %>%
+  mutate(crop_group = as.integer((as.numeric(factor(crop)) - 1) / 6) + 1)
+
+# Rysowanie wykresów po 10 poziomów na panel
+plots <- list()
+
+for (i in unique(Dataset$crop_group)) {
+  p <- ggplot(subset(Dataset, crop_group == i), aes(y = crop_price, fill = crop)) +
+    geom_boxplot() +
+    ggtitle("Cena w zależności od uprawy") +
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.ticks.x = element_blank(),
+          axis.text.x = element_blank(),
+          strip.text = element_text(size = 10, face = "bold"))
+  
+  plots[[i]] <- p
+}
+
+# Wyświetlanie wykresów
+for (p in plots) {
+  print(p)
+}
+```
+
+W kolejnym kroku sprawdzamy korelacje zmiennych numerycznych.
+
+```{r}
+library(ggcorrplot)  
+Correlation_Variables <- Dataset[,-c(1,2,11,12,13)]  
+Correlation_matrix <- round(cor(Correlation_Variables, method = "spearman"), 2) 
+p.mat_coefficient <- cor_pmat(Correlation_Variables)  
+ggcorrplot(Correlation_matrix, lab = TRUE, p.mat = p.mat_coefficient)
+```
+
+Zmienne nie są ze sobą mocno skorelowane, a zatem wszystkie mogą być wzięte do modeli.
+
+Ponadto zauważmy, że zmienne state, region i climate raczej nie powinny wchodzić razem do modelu. Informacje o region i climate są już zawarte w state, gdyż zostały na jej podstawie stworzone, a dodanie ich wszystkich do modelu może prowadzić do nadmiernego dopasowania.
+
+Dla potwierdzenia obliczymy współczynniki V Cramera dla tych trzech zmiennych.
+
+```{r}
+# Tworzenie tabeli kontyngencji
+tbl_state_region <- table(Dataset$state, Dataset$region)
+tbl_state_climate <- table(Dataset$state, Dataset$climate)
+tbl_region_climate <- table(Dataset$region, Dataset$climate)
+
+# Funkcja do obliczania Cramér's V
+cramers_v <- function(tbl) {
+  chi2 <- chisq.test(tbl)$statistic
+  n <- sum(tbl)
+  k <- min(nrow(tbl) - 1, ncol(tbl) - 1)
+  return(sqrt(chi2 / (n * k)))
+}
+
+# Obliczanie Cramér's V
+cramers_v_state_region <- cramers_v(tbl_state_region)
+cramers_v_state_climate <- cramers_v(tbl_state_climate)
+cramers_v_region_climate <- cramers_v(tbl_region_climate)
+
+print(paste("Cramér's V pomiedzy state i region:", cramers_v_state_region))
+print(paste("Cramér's V pomiedzy state i climate:", cramers_v_state_climate))
+print(paste("Cramér's V pomiedzy region i climate:", cramers_v_region_climate))
+```
+
+Współczynniki V Cramera są wysokie dla wszystkich kombinacji zmiennych, zatem będziemy rozważać modele:
+
+-   tylko ze zmienną state,
+
+-   tylko ze zmienną region,
+
+-   tylko ze zmienną climate.
+
+## Przetwarzanie danych do modelowania
+
+Modele, które zostaną stworzone to:
+
+-   model liniowy,
+
+-   drzewo regresyjne,
+
+-   las losowy,
+
+-   Gradient Boosting Machine (GBM),
+
+-   Support Vector Machines (SVM),
+
+-   K Nearest Neighbours (KNN).
+
+Do każdego z tych modeli zastosujemy inne przetworzenie danych:
+
+-   brak przetworzenia,
+
+-   kodowanie zmiennych kategorycznych,
+
+-   kodowanie zmiennych kategorycznych oraz normalizację zmiennych numerycznych.
+
+| model             | one hot encoding | normalizacja |
+|-------------------|------------------|--------------|
+| model liniowy     | nie              | nie          |
+| drzewo regresyjne | nie              | nie          |
+| las losowy        | nie              | nie          |
+| GBM               | tak              | nie          |
+| SVM               | tak              | tak          |
+| KNN               | tak              | tak          |
+
+```{r}
+#bez zadnych transformacji
+library(caret)
+set.seed(2024)
+indexes <- createDataPartition(Dataset$crop_price, p = 0.8, list = FALSE)
+#podział danych na zbiór treningowy (80%) i testowy (20%)
+train_data <- Dataset[indexes, ]
+test_data <- Dataset[-indexes, ]
+
+#najpierw one hot encoding a potem podzial (one hot encoding trzeba przed podzialem zeby uniknac wycieku informacji - zabraklo mi pewnych kolumn w zbiorze testowym jak zrobilam odwrotnie)
+
+library(fastDummies)
+
+encoded_dataset <- dummy_cols(Dataset, 
+                              select_columns = c("state","soil_type","crop","region","climate"),
+                              remove_selected_columns = TRUE)
+
+set.seed(2024)
+indexes <- createDataPartition(encoded_dataset$crop_price, p = 0.8, list = FALSE)
+#podział danych na zbiór treningowy (80%) i testowy (20%)
+encoded_train_data <- encoded_dataset[indexes, ]
+encoded_test_data <- encoded_dataset[-indexes, ]
+
+#normalizacja z one hot encodingiem
+
+# Użycie preProcess do normalizacji
+preProc <- preProcess(encoded_train_data[, 1:8], method = c("center", "scale"))
+normalized_values <- predict(preProc, encoded_train_data[, 1:8])
+
+# Ponowne połączenie z danymi kategorycznymi
+normalized_encoded_train_data <- encoded_train_data
+normalized_encoded_train_data[,1:8] <- normalized_values
+
+#na zbiorze testowym
+normalized_values <- predict(preProc, encoded_test_data[, 1:8])
+
+# Ponowne połączenie z danymi kategorycznymi
+normalized_encoded_test_data <- encoded_test_data
+normalized_encoded_test_data[,1:8] <- normalized_values
+```
+
+## Modelowanie
+
+Jako, że nie wiemy która ze zmiennych pomiędzy state, region i climate będzie najlepiej pasowała do modelu, będziemy budować oddzielne warianty modeli i porównywać je ze sobą. Ewentualne tuningi dodamy dla modeli z najlepszymi wynikami ewaluacji. Samą zaś ewaluację będziemy przeprowadzać w oparciu o 3 metryki:
+
+-   MAE - mierzy średnią wartość bezwzględnej różnicy między rzeczywistymi a przewidywanymi wartościami.; im niższa wartość MAE, tym lepszy model, ponieważ oznacza mniejsze odchylenie przewidywań od rzeczywistych wartości,
+
+-   MSE - mierzy średnią wartość kwadratu różnicy między rzeczywistymi a przewidywanymi wartościami.; im niższa wartość MSE, tym lepszy model, ponieważ oznacza mniejszą wariancję przewidywań od rzeczywistych wartości,
+
+-   $R^2$- mierzy stopień dopasowania modelu do danych; dostarcza informacji jak dużo zmienności w danych jest wyjaśniane przez model; im wyższa wartość $R^2$ , tym lepsze dopasowanie modelu do danych.
+
+Ponadto będziemy oddzielnie przeprowadzać ewaluację modelu na zbiorze uczącym i testowym w celu sprawdzenia stabilności modelu.
+
+### Model liniowy
+
+Model liniowy, inaczej regresja liniowa, jest jednym z najprostszych i najbardziej podstawowych modeli w analizie regresji. Zakłada, że istnieje liniowa kombinacja zmiennych niezależnych, która najlepiej opisuje zmienną zależną (u nas crop_price), tzn:
+
+$$Y=\beta_1X_1+\beta_2X_2+...+\beta_nX_n+\varepsilon,$$
+
+gdzie:
+
+$Y$ - zmienna zależna,
+
+$\beta_1, \beta_2,..., \beta_n$ - współczynniki regresji,
+
+$X_1, X_2,..., X_n$ - zmienne niezależne,
+
+$\varepsilon$ - błąd losowy.
+
+```{r}
+#tylko state
+model_lm <- lm(crop_price ~.-region-climate, data = train_data) 
+
+# Funkcja do obliczania metryk ewaluacyjnych
+metrics <- function(true_values, predicted_values) {
+  MSE <- mean((predicted_values - true_values)^2)
+  MAE <- mean(abs(predicted_values - true_values))
+  SST <- sum((true_values - mean(true_values))^2)
+  SSR <- sum((predicted_values - true_values)^2)
+  R_squared <- 1 - (SSR / SST)
+
+  return(list(MSE = MSE, MAE = MAE, R_squared = R_squared))
+}
+
+#dopasowanie modelu na zbiorze treningowym
+true_values_train <- train_data$crop_price
+prediction_lm <- predict(model_lm, newdata = train_data)
+metrics_train1 <- metrics(true_values_train,prediction_lm)
+
+#dopasowanie modelu na zbiorze testowym
+true_values_test <- test_data$crop_price
+prediction_lm <- predict(model_lm, newdata = test_data)
+metrics_test1 <- metrics(true_values_test,prediction_lm)
+
+
+#tylko region
+model_lm2 <- lm(crop_price ~.-state-climate, data = train_data)
+
+#dopasowanie modelu na zbiorze treningowym
+prediction_lm <- predict(model_lm2, newdata = train_data)
+metrics_train2 <- metrics(true_values_train, prediction_lm)
+
+#dopasowanie modelu na zbiorze testowym
+prediction_lm <- predict(model_lm2, newdata = test_data)
+metrics_test2 <- metrics(true_values_test,prediction_lm)
+
+#tylko climate
+model_lm3 <- lm(crop_price ~.-state-region, data = train_data)
+
+#dopasowanie modelu na zbiorze treningowym
+prediction_lm <- predict(model_lm3, newdata = train_data)
+metrics_train3 <- metrics(true_values_train, prediction_lm)
+
+#dopasowanie modelu na zbiorze testowym
+prediction_lm <- predict(model_lm3, newdata = test_data)
+metrics_test3 <- metrics(true_values_test, prediction_lm)
+```
+
+```{r}
+MAE_metric <- c(metrics_train1$MAE, metrics_train2$MAE, metrics_train3$MAE)
+MSE_metric <- c(metrics_train1$MSE, metrics_train2$MSE, metrics_train3$MSE)
+R_square_metric <- c(metrics_train1$R_squared, metrics_train2$R_squared, metrics_train3$R_squared)
+
+DataFrame <- data.frame(MAE_metric, MSE_metric, R_square_metric)
+DataFrame <- data.frame(t(DataFrame))
+names(DataFrame) <- c("Model_state", "Model_region", "Model_climate")
+
+library(DT)
+datatable(DataFrame,caption = "Metryki na zbiorze treningowym")
+```
+
+```{r}
+MAE_metric <- c(metrics_test1$MAE, metrics_test2$MAE, metrics_test3$MAE)
+MSE_metric <- c(metrics_test1$MSE, metrics_test2$MSE, metrics_test3$MSE)
+R_square_metric <- c(metrics_test1$R_squared, metrics_test2$R_squared, metrics_test3$R_squared)
+
+DataFrame <- data.frame(MAE_metric, MSE_metric, R_square_metric)
+DataFrame <- data.frame(t(DataFrame))
+names(DataFrame) <- c("Model_state", "Model_region", "Model_climate")
+
+datatable(DataFrame,caption = "Metryki na zbiorze testowym")
+```
+
+Na podstawie wyników metryk na zbiorze treningowym i testowym można stwierdzić, że model ze zmienną state osiągnął najniższe wartości błędów oraz najwyższe dopasowanie w porównaniu do pozostałych modeli. Ponadto osiaga on podobne dopasowanie zarówno na zbiorze uczącym i testowym, co oznacza, że nie jest on ani niedouczony, ani przeuczony. Jednak różnice w wydajności między modelami nie są mocno znaczące, a dopasowanie samych modeli jest dość niskie, co oznacza, że modele mają ograniczoną zdolność do precyzyjnego przewidywania.
+
+### Model drzewa
+
+Algorytm drzewa decyzyjnego jest metodą uczenia maszynowego używaną zarówno do klasyfikacji, jak i regresji. Jego działanie polega na rekurencyjnym podziale danych na mniejsze, bardziej jednorodne podzbiory, tworząc strukturę przypominającą drzewo. Proces budowy drzewa rozpoczyna się od całego zbioru danych i polega na wyborze najlepszych cech oraz wartości progowych do podziału, co maksymalizuje jednorodność podzbiorów. Węzły wewnętrzne drzewa reprezentują decyzje na podstawie wybranych cech, natomiast liście reprezentują końcowe przewidywania modelu. Algorytm dzieli dane aż do osiągnięcia określonej głębokości drzewa, minimalnej liczby próbek w liściu, lub gdy dalsze podziały nie przynoszą znaczącej poprawy jednorodności.
+
+```{r}
+library(rpart)
+
+#Modele bez przeszukiwania siatki parametrow i kroswalidacji
+
+#tylko state
+model_tree1 <- rpart(crop_price ~.-region-climate, data = train_data, method = "anova") #method=anova oznacza ze model bedzie regresyjny
+
+#dopasowanie modelu na zbiorze treningowym
+prediction_tree <- predict(model_tree1, newdata = train_data)
+metrics_train1 <- metrics(true_values_train,prediction_tree)
+
+#dopasowanie modelu na zbiorze testowym
+prediction_tree1 <- predict(model_tree1, newdata = test_data)
+metrics_test <- metrics(true_values_test,prediction_tree)
+
+#tylko region
+model_tree2 <- rpart(crop_price ~.-state-climate, data = train_data, method = "anova")
+
+#dopasowanie modelu na zbiorze treningowym
+prediction_tree <- predict(model_tree2, newdata = train_data)
+metrics_train2 <- metrics(true_values_train,prediction_tree)
+
+#dopasowanie modelu na zbiorze testowym
+prediction_tree <- predict(model_tree2, newdata = test_data)
+metrics_test2 <- metrics(true_values_test,prediction_tree)
+
+#tylko climate
+model_tree3 <- rpart(crop_price ~.-state-region, data = train_data, method = "anova")
+
+#dopasowanie modelu na zbiorze treningowym
+prediction_tree <- predict(model_tree3, newdata = train_data)
+metrics_train3 <- metrics(true_values_train,prediction_tree)
+
+#dopasowanie modelu na zbiorze testowym
+prediction_tree <- predict(model_tree3, newdata = test_data)
+metrics_test3 <- metrics(true_values_test,prediction_tree)
+```
+
+```{r}
+MAE_metric <- c(metrics_train1$MAE, metrics_train2$MAE, metrics_train3$MAE)
+MSE_metric <- c(metrics_train1$MSE, metrics_train2$MSE, metrics_train3$MSE)
+R_square_metric <- c(metrics_train1$R_squared, metrics_train2$R_squared, metrics_train3$R_squared)
+
+DataFrame <- data.frame(MAE_metric, MSE_metric, R_square_metric)
+DataFrame <- data.frame(t(DataFrame))
+names(DataFrame) <- c("Model_state", "Model_region", "Model_climate")
+
+datatable(DataFrame,caption = "Metryki na zbiorze treningowym")
+```
+
+```{r}
+MAE_metric <- c(metrics_test1$MAE, metrics_test2$MAE, metrics_test3$MAE)
+MSE_metric <- c(metrics_test1$MSE, metrics_test2$MSE, metrics_test3$MSE)
+R_square_metric <- c(metrics_test1$R_squared, metrics_test2$R_squared, metrics_test3$R_squared)
+
+DataFrame <- data.frame(MAE_metric, MSE_metric, R_square_metric)
+DataFrame <- data.frame(t(DataFrame))
+names(DataFrame) <- c("Model_state", "Model_region", "Model_climate")
+
+datatable(DataFrame,caption = "Metryki na zbiorze testowym")
+```
+
+W modelach drzewa, podobnie jak w modelach liniowych, na podstawie wyników metryk można stwierdzić, że model oparty na zmiennej state osiągnął najniższe wartości błędów oraz najwyższe dopasowanie w porównaniu do pozostałych modeli. Ponadto, model ten wykazuje podobne dopasowanie zarówno na zbiorze uczącym, jak i testowym, co sugeruje, że nie jest on ani niedouczony, ani przeuczony. Niemniej jednak, różnice w wydajności między modelami nie są znaczące, a sam poziom dopasowania jest dość niski, co sugeruje, że modele mają ograniczoną zdolność do precyzyjnego przewidywania wartości zmiennych zależnych. Stuningowanie najlepszego z nich (ze zmienną state) poprzez dodanie siatki parametrów i 10-krotną walidację krzyżową, dało jeszcze słabsze wyniki:
+
+```{r}
+#definicja kontroli walidacji krzyżowej
+control <- trainControl(method = "cv", number = 10)
+
+#definicja siatki przeszukiwania hiperparametrów
+tune_grid <- expand.grid(cp=seq(0.001, 0.01, length=10))
+
+# Trenowanie modelu z tuningiem hiperparametrów
+model_tree <- train(crop_price ~ .-region-climate, data=train_data, method="rpart", trControl=control,tuneGrid=tune_grid)
+
+#dopasowanie modelu na zbiorze treningowym
+prediction_tree <- predict(model_tree, newdata = train_data)
+metrics_train <- metrics(true_values_train,prediction_tree)
+
+#dopasowanie modelu na zbiorze testowym
+prediction_tree <- predict(model_tree, newdata = test_data)
+metrics_test <- metrics(true_values_test,prediction_tree)
+```
+
+```{r}
+print("Metryki na zbiorze treningowym:")
+metrics_train
+```
+
+```{r}
+print("Metryki na zbiorze testowym:")
+metrics_test
+```
+
+### Las losowy
+
+Algorytm lasu losowego jest metodą uczenia maszynowego, która polega na tworzeniu wielu drzew działających jako zespoły. Każdo z tych drzew jest trenowane na losowo wybranym podzbiorze danych oraz losowym podzbiorze cech, co wprowadza różnorodność w drzewach. Przewidywania poszczególnych drzew są następnie łączone – w przypadku klasyfikacji poprzez wybranie najczęsciej powtarzającej się wartości, a w przypadku regresji poprzez uśrednianie wyników. Las losowy jest bardziej odporny na szum w danych i zazwyczaj oferuje lepszą wydajność w porównaniu do pojedynczego drzewa decyzyjnego.
+
+```{r}
+library(randomForest)
+
+#tylko state
+model_rf1 <- randomForest(crop_price ~ .-region-climate, data = train_data, mtry = sqrt(ncol(train_data) - 1))
+
+#dopasowanie modelu na zbiorze treningowym
+prediction_rf <- predict(model_rf1, newdata = train_data)
+metrics_train1 <- metrics(true_values_train,prediction_rf)
+
+#dopasowanie modelu na zbiorze testowym
+prediction_rf <- predict(model_rf1, newdata = test_data)
+metrics_test1 <- metrics(true_values_test,prediction_rf)
+
+#tylko region
+model_rf2 <- randomForest(crop_price ~ .-state-climate, data = train_data, mtry = sqrt(ncol(train_data) - 1))
+
+#dopasowanie modelu na zbiorze treningowym
+prediction_rf <- predict(model_rf2, newdata = train_data)
+metrics_train2 <- metrics(true_values_train,prediction_rf)
+
+#dopasowanie modelu na zbiorze testowym
+prediction_rf <- predict(model_rf2, newdata = test_data)
+metrics_test2 <- metrics(true_values_test,prediction_rf)
+
+#tylko climate
+model_rf3 <- randomForest(crop_price ~ .-state-region, data = train_data, mtry = sqrt(ncol(train_data) - 1))
+
+#dopasowanie modelu na zbiorze treningowym
+prediction_rf <- predict(model_rf3, newdata = train_data)
+metrics_train3 <- metrics(true_values_train,prediction_rf)
+
+#dopasowanie modelu na zbiorze testowym
+prediction_rf <- predict(model_rf3, newdata = test_data)
+metrics_test3 <- metrics(true_values_test,prediction_rf)
+```
+
+```{r}
+MAE_metric <- c(metrics_train1$MAE, metrics_train2$MAE, metrics_train3$MAE)
+MSE_metric <- c(metrics_train1$MSE, metrics_train2$MSE, metrics_train3$MSE)
+R_square_metric <- c(metrics_train1$R_squared, metrics_train2$R_squared, metrics_train3$R_squared)
+
+DataFrame <- data.frame(MAE_metric, MSE_metric, R_square_metric)
+DataFrame <- data.frame(t(DataFrame))
+names(DataFrame) <- c("Model_state", "Model_region", "Model_climate")
+
+datatable(DataFrame,caption = "Metryki na zbiorze treningowym")
+```
+
+```{r}
+MAE_metric <- c(metrics_test1$MAE, metrics_test2$MAE, metrics_test3$MAE)
+MSE_metric <- c(metrics_test1$MSE, metrics_test2$MSE, metrics_test3$MSE)
+R_square_metric <- c(metrics_test1$R_squared, metrics_test2$R_squared, metrics_test3$R_squared)
+
+DataFrame <- data.frame(MAE_metric, MSE_metric, R_square_metric)
+DataFrame <- data.frame(t(DataFrame))
+names(DataFrame) <- c("Model_state", "Model_region", "Model_climate")
+
+datatable(DataFrame,caption = "Metryki na zbiorze testowym")
+```
+
+Na podstawie wyników metryk na zbiorze treningowym i testowym można zauważyć, że modele różnią się pod względem swojej wydajności. Najlepiej wypadł model oparty o zmienną region osiągając najniższe wartości błędów MAE i MSE oraz najwyzszy współczynnik $R^2$ zarówno na zbiorze treningowym, jak i testowym. Jednak zarówno ten model jak i pozostałe cechują się wysokim przeuczeniem.
+
+Sprawdźmy jak sprawdzi się po dodaniu siatki parametrów i 10-krotnej walidacji krzyżowej:
+
+```{r}
+#definicja siatki parametrów
+tune_grid <- expand.grid(mtry=seq(1,10,1)) #mtry - liczba losowo wybranych zmiennych
+
+#trenowanie modelu z przeszukiwaniem siatki parametrów i walidacją krzyżową
+set.seed(2024)
+model_rf <- train(
+  crop_price ~ .-state-climate, 
+  data = train_data, 
+  method = "rf", 
+  trControl = control, 
+  tuneGrid = tune_grid)
+```
+
+```{r}
+print("Metryki na zbiorze treningowym:")
+prediction_rf <- predict(model_rf, newdata = train_data)
+metrics_train <- metrics(true_values_train,prediction_rf)
+print(metrics_train)
+```
+
+```{r}
+print("Metryki na zbiorze testowym:")
+prediction_rf <- predict(model_rf, newdata = test_data)
+metrics_test <- metrics(true_values_test,prediction_rf)
+print(metrics_test)
+```
+
+Niestety stuningowanie modeli, nie poprawiło go znacząco.
+
+### Gradient Boosting Machines
+
+Gradient Boosting Machines (GBM) to technika uczenia maszynowego, która polega na budowaniu silnych modeli przewidywania poprzez sekwencyjne dodawanie słabych modeli predykcyjnych (zazwyczaj drzew decyzyjnych), tak aby korygować błędy poprzednich modeli. Proces ten polega na minimalizowaniu funkcji straty poprzez iteracyjne dopasowywanie modelu do reszt, które pozostały po poprzednich iteracjach. GBM wykorzystuje technikę gradientowego spadku (gradient descent) do optymalizacji parametrów modelu, minimalizując błąd prognozowania w kolejnych iteracjach. Dzięki temu GBM może osiągać bardzo dobre wyniki predykcyjne nawet dla skomplikowanych zbiorów danych.
+
+```{r}
+#tylko ze zmienna state
+library(gbm)
+
+# Wybieranie kolumn, które nie zaczynają się od "region_" lub "climate_"
+selected_columns1 <- !grepl("^region_|^climate_", names(encoded_train_data))
+
+model_gbm <- gbm(crop_price ~ ., data=encoded_train_data[,selected_columns1], distribution="gaussian", n.trees=100, interaction.depth=4)
+
+#dopasowanie modelu na zbiorze treningowym
+prediction_gbm <- predict(model_gbm, newdata = encoded_train_data)
+metrics_train1 <- metrics(true_values_train,prediction_gbm)
+
+#dopasowanie modelu na zbiorze testowym
+prediction_gbm <- predict(model_gbm, newdata = encoded_test_data)
+metrics_test1 <- metrics(true_values_test,prediction_gbm)
+
+#tylko ze zmienna region
+selected_columns2 <- !grepl("^state_|^climate_", names(encoded_train_data))
+model_gbm2 <- gbm(crop_price ~ ., data=encoded_train_data[,selected_columns2], distribution="gaussian", n.trees=100, interaction.depth=4)
+
+#dopasowanie modelu na zbiorze treningowym
+prediction_gbm <- predict(model_gbm2, newdata = encoded_train_data)
+metrics_train2 <- metrics(true_values_train,prediction_gbm)
+
+#dopasowanie modelu na zbiorze testowym
+prediction_gbm <- predict(model_gbm2, newdata = encoded_test_data)
+metrics_test2 <- metrics(true_values_test,prediction_gbm)
+
+#tylko ze zmienna climate
+selected_columns3 <- !grepl("^state_|^region", names(encoded_train_data))
+model_gbm3 <- gbm(crop_price ~ ., data=encoded_train_data[,selected_columns3], distribution="gaussian", n.trees=100, interaction.depth=4)
+
+#dopasowanie modelu na zbiorze treningowym
+prediction_gbm <- predict(model_gbm3, newdata = encoded_train_data)
+metrics_train3 <- metrics(true_values_train,prediction_gbm)
+
+#dopasowanie modelu na zbiorze testowym
+prediction_gbm <- predict(model_gbm3, newdata = encoded_test_data)
+metrics_test3 <- metrics(true_values_test,prediction_gbm)
+```
+
+```{r}
+MAE_metric <- c(metrics_train1$MAE, metrics_train2$MAE, metrics_train3$MAE)
+MSE_metric <- c(metrics_train1$MSE, metrics_train2$MSE, metrics_train3$MSE)
+R_square_metric <- c(metrics_train1$R_squared, metrics_train2$R_squared, metrics_train3$R_squared)
+
+DataFrame <- data.frame(MAE_metric, MSE_metric, R_square_metric)
+DataFrame <- data.frame(t(DataFrame))
+names(DataFrame) <- c("Model_state", "Model_region", "Model_climate")
+
+datatable(DataFrame,caption = "Metryki na zbiorze treningowym")
+```
+
+```{r}
+MAE_metric <- c(metrics_test1$MAE, metrics_test2$MAE, metrics_test3$MAE)
+MSE_metric <- c(metrics_test1$MSE, metrics_test2$MSE, metrics_test3$MSE)
+R_square_metric <- c(metrics_test1$R_squared, metrics_test2$R_squared, metrics_test3$R_squared)
+
+DataFrame <- data.frame(MAE_metric, MSE_metric, R_square_metric)
+DataFrame <- data.frame(t(DataFrame))
+names(DataFrame) <- c("Model_state", "Model_region", "Model_climate")
+
+datatable(DataFrame,caption = "Metryki na zbiorze testowym")
+```
+
+Modele wydają się być podobnie pod względem dopasowania do danych treningowych, ale mają trudności w generalizacji na nowe dane. Model oparty o zmienną climate wydaje się być nieco mniej skuteczny niż modele oparte na zmiennych state i region.
+
+Spróbujemy stuningować model ze zmienną state, poprzez dodanie siatki hiperparametrów z parametrami oraz 5-krotnej walidacji krzyżowej.
+
+```{r,echo=FALSE, results='hide'}
+#siatka
+# param_grid <- expand.grid(
+#   n.trees = seq(1,100,1),
+#   interaction.depth = seq(1,20,1),
+#   shrinkage = c(0.001, 0.01),
+#   n.minobsinnode = c(1:5)
+# )
+# 
+# # Ustawienie parametrów kontrolnych dla kroswalidacji
+# control <- trainControl(
+#   method = "cv",
+#   number = 5,
+#   verboseIter = TRUE,
+#   allowParallel = TRUE
+# )
+# 
+# # Trening modelu GBM z tuningiem hiperparametrów
+# gbm_model <- train(
+#   crop_price~.,
+#   data = encoded_train_data[,selected_columns3],
+#   method = "gbm",
+#   trControl = control,
+#   tuneGrid = param_grid
+# )
+# saveRDS(gbm_model,file="model_gbm.rds")
+
+ # Wybór najlepszego modelu
+ gbm_model <-readRDS("model_gbm.rds")
+```
+
+```{r}
+print("Metryki na zbiorze treningowym:")
+prediction_gbm1 <- predict(gbm_model, newdata = encoded_train_data)
+metrics_train <- metrics(true_values_train,prediction_gbm1)
+metrics_train
+```
+
+```{r}
+print("Metryki na zbiorze testowym:")
+prediction_gbm1 <- predict(gbm_model, newdata = encoded_test_data)
+metrics_test <- metrics(true_values_test,prediction_gbm1)
+metrics_test
+```
+
+Stuningowanie modelu zniwelowało przeuczenie oraz poprawiło dopasowanie na zbiorze testowym, ale jednak wciąz nie jest ono zbyt wysokie.
+
+### Support Vector Machines (SVM)
+
+Podstawowym celem SVM jest znalezienie hiperpłaszczyzny optymalnie separującej dane o różnych klasach (w przypadku klasyfikacji) lub maksymalizującej margines między danymi a hiperpłaszczyzną (w przypadku regresji). SVM wykorzystuje wektory nośne, czyli próbki danych znajdujące się najbliżej hiperpłaszczyzny decyzyjnej.
+
+```{r}
+#tylko state
+library(e1071)
+set.seed(2024)
+model_svm <- svm(crop_price ~ ., data=normalized_encoded_train_data[,selected_columns1], kernel="radial")
+
+#dopasowanie modelu na zbiorze treningowym
+normalized_true_values_train <- normalized_encoded_train_data$crop_price
+prediction_svm <- predict(model_svm, newdata = normalized_encoded_train_data[,selected_columns1])
+metrics_train1 <- metrics(normalized_true_values_train,prediction_svm)
+
+#dopasowanie modelu na zbiorze testowym
+normalized_true_values_test <- normalized_encoded_test_data$crop_price
+prediction_svm <- predict(model_svm, newdata = normalized_encoded_test_data[selected_columns1])
+metrics_test1 <- metrics(normalized_true_values_test,prediction_svm)
+
+#tylko region
+model_svm <- svm(crop_price ~ ., data=normalized_encoded_train_data[,selected_columns2], kernel="radial")
+
+#dopasowanie modelu na zbiorze treningowym
+normalized_true_values_train <- normalized_encoded_train_data$crop_price
+prediction_svm <- predict(model_svm, newdata = normalized_encoded_train_data[,selected_columns2])
+metrics_train2 <- metrics(normalized_true_values_train,prediction_svm)
+
+#dopasowanie modelu na zbiorze testowym
+normalized_true_values_test <- normalized_encoded_test_data$crop_price
+prediction_svm <- predict(model_svm, newdata = normalized_encoded_test_data[selected_columns2])
+metrics_test2 <- metrics(normalized_true_values_test,prediction_svm)
+
+#tylko climate
+model_svm <- svm(crop_price ~ ., data=normalized_encoded_train_data[,selected_columns3], kernel="radial")
+
+#dopasowanie modelu na zbiorze treningowym
+normalized_true_values_train <- normalized_encoded_train_data$crop_price
+prediction_svm <- predict(model_svm, newdata = normalized_encoded_train_data[,selected_columns3])
+metrics_train3 <- metrics(normalized_true_values_train,prediction_svm)
+
+#dopasowanie modelu na zbiorze testowym
+normalized_true_values_test <- normalized_encoded_test_data$crop_price
+prediction_svm <- predict(model_svm, newdata = normalized_encoded_test_data[selected_columns3])
+metrics_test3 <- metrics(normalized_true_values_test,prediction_svm)
+```
+
+```{r}
+MAE_metric <- c(metrics_train1$MAE, metrics_train2$MAE, metrics_train3$MAE)
+MSE_metric <- c(metrics_train1$MSE, metrics_train2$MSE, metrics_train3$MSE)
+R_square_metric <- c(metrics_train1$R_squared, metrics_train2$R_squared, metrics_train3$R_squared)
+
+DataFrame <- data.frame(MAE_metric, MSE_metric, R_square_metric)
+DataFrame <- data.frame(t(DataFrame))
+names(DataFrame) <- c("Model_state", "Model_region", "Model_climate")
+
+datatable(DataFrame,caption = "Metryki na zbiorze treningowym")
+```
+
+```{r}
+MAE_metric <- c(metrics_test1$MAE, metrics_test2$MAE, metrics_test3$MAE)
+MSE_metric <- c(metrics_test1$MSE, metrics_test2$MSE, metrics_test3$MSE)
+R_square_metric <- c(metrics_test1$R_squared, metrics_test2$R_squared, metrics_test3$R_squared)
+
+DataFrame <- data.frame(MAE_metric, MSE_metric, R_square_metric)
+DataFrame <- data.frame(t(DataFrame))
+names(DataFrame) <- c("Model_state", "Model_region", "Model_climate")
+
+datatable(DataFrame,caption = "Metryki na zbiorze testowym")
+```
+
+Analiza wyników metryk wykazuje, że modele oparte na zmiennych state i region osiągają niższe wartości błędów oraz wyższy współczynnik determinacji zarówno na zbiorze treningowym, jak i testowym w porównaniu do modelu ze zmienną climate. Mimo to, ogólny poziom dopasowania wszystkich modeli jest dość niski, co sugeruje, że modele mają ograniczoną zdolność do precyzyjnego przewidywania wartości zmiennych zależnych. Spróbujemy stuningować model ze zmienną state, gdyż osiąga on bardziej zbliżone wyniki na zbiorach uczącym i testowym.
+
+```{r, echo=FALSE, results='hide'}
+# #siatka
+# tune_grid <- expand.grid(sigma = seq(0.001, 0.01, length = 10), 
+#                         C = seq(1,100,10))
+# 
+# # Trenowanie modelu SVM z walidacją krzyżową i tuningowaniem hiperparametrów
+# model_svm <- train(crop_price ~ ., 
+#                    data = normalized_encoded_train_data[, selected_columns1], 
+#                    method = "svmRadial",  
+#                    trControl = control,      
+#                    tuneGrid = tune_grid)  
+# saveRDS(model_svm,file="model_svm.rds")
+model_svm <- readRDS("model_svm.rds")
+```
+
+```{r}
+print("Metryki na zbiorze treningowym:")
+normalized_true_values_train <- normalized_encoded_train_data$crop_price
+prediction_svm <- predict(model_svm, newdata = normalized_encoded_train_data[,selected_columns1])
+metrics_train <- metrics(normalized_true_values_train,prediction_svm)
+metrics_train
+```
+
+```{r}
+print("Metryki na zbiorze testowym:")
+normalized_true_values_test <- normalized_encoded_test_data$crop_price
+prediction_svm <- predict(model_svm, newdata = normalized_encoded_test_data[,selected_columns1])
+metrics_test <- metrics(normalized_true_values_test,prediction_svm)
+metrics_test
+```
+
+Tuning parametrów modelu, trochę go poprawił, jednak dopasowanie na zbiorze uczącym i testowym, trochę się rózni.
+
+### K Nearest Neighbours
+
+Algorytm k-najbliższych sąsiadów jest algorytmem uczenia maszynowego, który dokonuje predykcji na podstawie podobieństwa między nowym punktem danych a danymi treningowymi. W klasyfikacji przyporządkowuje nowy punkt do klasy najczęściej reprezentowanej przez k najbliższych punktów treningowych, a w regresji oblicza wartość predykcyjną na podstawie średniej (lub mediany) wartości k najbliższych punktów. Kluczowym parametrem jest k, czyli liczba sąsiadów. Zbudujemy modele z automatycznym doborem k poprzez walidację krzyżową.
+
+```{r, echo= FALSE, results='hide'}
+#tylko state
+library(class)
+
+# Trenowanie modelu KNN z automatycznym doborem k
+set.seed(2024)
+model_knn <- train(
+  crop_price~.,
+  data=normalized_encoded_train_data[,selected_columns1],
+  method = "knn",
+  tuneLength = 20,  # Sprawdzanie wartości k od 1 do 20
+  trControl = control
+)
+
+# Optymalne k
+k1 <- model_knn$bestTune$k
+
+# Ewaluacja wyników na zbiorze uczącym
+prediction_knn_train <- predict(model_knn, newdata = normalized_encoded_train_data[,selected_columns1])
+metrics_train1 <- metrics(normalized_true_values_train, prediction_knn_train)
+
+# Ewaluacja wyników na zbiorze testowym
+prediction_knn_test <- predict(model_knn, newdata = normalized_encoded_test_data[,selected_columns1])
+metrics_test1 <- metrics(normalized_true_values_test, prediction_knn_test)
+
+#tylko region
+model_knn <- train(
+  crop_price~.,
+  data=normalized_encoded_train_data[,selected_columns2],
+  method = "knn",
+  tuneLength = 20, 
+  trControl = control
+)
+
+k2 <- model_knn$bestTune$k
+
+# Ewaluacja wyników na zbiorze uczącym
+prediction_knn_train <- predict(model_knn, newdata = normalized_encoded_train_data[,selected_columns2])
+metrics_train2 <- metrics(normalized_true_values_train, prediction_knn_train)
+
+# Ewaluacja wyników na zbiorze testowym
+prediction_knn_test <- predict(model_knn, newdata = normalized_encoded_test_data[,selected_columns2])
+metrics_test2 <- metrics(normalized_true_values_test, prediction_knn_test)
+
+#tylko climate
+model_knn <- train(
+  crop_price~.,
+  data=normalized_encoded_train_data[,selected_columns3],
+  method = "knn",
+  tuneLength = 20,
+  trControl = control
+)
+
+# Optymalne k
+k3 <- model_knn$bestTune$k
+
+# Ewaluacja wyników na zbiorze uczącym
+prediction_knn_train <- predict(model_knn, newdata = normalized_encoded_train_data[,selected_columns3])
+metrics_train3 <- metrics(normalized_true_values_train, prediction_knn_train)
+
+# Ewaluacja wyników na zbiorze testowym
+prediction_knn_test <- predict(model_knn, newdata = normalized_encoded_test_data[,selected_columns3])
+metrics_test3 <- metrics(normalized_true_values_test, prediction_knn_test)
+```
+
+```{r}
+paste("Optymalne k dla modelu ze zmnienną state to: ",k1)
+paste("Optymalne k dla modelu ze zmnienną region to: ",k2)
+paste("Optymalne k dla modelu ze zmnienną climate to: ",k3)
+```
+
+```{r}
+MAE_metric <- c(metrics_train1$MAE, metrics_train2$MAE, metrics_train3$MAE)
+MSE_metric <- c(metrics_train1$MSE, metrics_train2$MSE, metrics_train3$MSE)
+R_square_metric <- c(metrics_train1$R_squared, metrics_train2$R_squared, metrics_train3$R_squared)
+
+DataFrame <- data.frame(MAE_metric, MSE_metric, R_square_metric)
+DataFrame <- data.frame(t(DataFrame))
+names(DataFrame) <- c("Model_state", "Model_region", "Model_climate")
+
+datatable(DataFrame,caption = "Metryki na zbiorze treningowym")
+```
+
+```{r}
+MAE_metric <- c(metrics_test1$MAE, metrics_test2$MAE, metrics_test3$MAE)
+MSE_metric <- c(metrics_test1$MSE, metrics_test2$MSE, metrics_test3$MSE)
+R_square_metric <- c(metrics_test1$R_squared, metrics_test2$R_squared, metrics_test3$R_squared)
+
+DataFrame <- data.frame(MAE_metric, MSE_metric, R_square_metric)
+DataFrame <- data.frame(t(DataFrame))
+names(DataFrame) <- c("Model_state", "Model_region", "Model_climate")
+
+datatable(DataFrame,caption = "Metryki na zbiorze testowym")
+```
+
+Średni błąd bezwzględny dla modeli waha się między 0.31 a 0.34 na zbiorze treningowym i wynosi około 0.38 na zbiorze testowym. Średni błąd kwadratowy wynosi około 0.48 na zbiorze testowym. Współczynnik determinacji dla zbioru testowego wynosi około 0.28. Wartości te sugerują, że modele mają podobną zdolność predykcyjną, ale ich ogólna zdolność do wyjaśniania zmienności danych jest ograniczona. Ze wszystkich modeli najlepiej wypada model ze zmienną climate - najwyższe dopasowanie na zbiorze testowym oraz najmniejsza różnica dopasowania pomiędzy zbiorami uczącym i testowym.
+
+## Podsumowanie
+
+Wyniki na zbiorze testowym dla najlepszych modeli:
+
+|       | Regresja liniowa | Drzewo     | Las losowy | GBM       | SVM       | KNN     |
+|-------|------------------|------------|------------|-----------|-----------|---------|
+| MSE   | 1167.39          | 1167.39    | 6630338    | 7138259   | 0.3981094 | 0.3794  |
+| MAE   | 6557236.34       | 6557236.34 | 1249.668   | 1457.49   | 0.2445859 | 0.4789  |
+| $R^2$ | 0.34333          | 0.34333    | 0.33601    | 0.2851493 | 0.4137162 | 0.29473 |
+
+Wszystkie modele prezentują podobną skuteczność w przewidywaniu danych, lecz wszystkie mają ograniczone możliwości. Najlepsze wyniki wydaje się uzyskiwać model SVM, charakteryzując się wyższym współczynnikiem $R^2$ w porównaniu do innych modeli. Warto jednak zauważyć, że dopasowanie modelu na zbiorze uczącym i testowym różniło się (wartość $R^2$ ok. 0.35 dla zbioru treningowego).
+
+Można przypuszczać, że skuteczność modeli mogłaby być lepsza, gdyby zbiór danych był bardziej kompletny i zawierał więcej informacji. Brakuje szczegółowych informacji o zmiennych, takich jak jednostki miary dla zmiennych numerycznych czy szczegóły dotyczące czasu sprzedaży. Takie informacje mogłyby znacząco wpłynąć na precyzję przewidywań i ogólną efektywność modeli.
